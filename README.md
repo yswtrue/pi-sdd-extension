@@ -9,6 +9,7 @@ A session-scoped SDD workflow extension for pi.
 /sdd:on              Enable SDD for the current session
 /sdd:off             Return to the normal workflow
 /sdd:status          Show feature, phase, and routing
+/sdd:resume          Resume an incomplete feature from the current directory
 /sdd:config          Interactively configure SDD defaults
 /sdd:agents          Initialize missing default sub-agent definitions
 /sdd:approve         Approve the current specification or plan
@@ -22,6 +23,7 @@ Project-local `.pi/sdd.json` controls the executor and model for each phase:
 
 ```json
 {
+  "showSddGuide": true,
   "default": { "executor": "main" },
   "phases": {
     "requirements": {
@@ -43,6 +45,8 @@ Project-local `.pi/sdd.json` controls the executor and model for each phase:
   }
 }
 ```
+
+The SDD usage guide is shown on the first screen by default. Set `"showSddGuide": false` in `.pi/sdd.json` to hide only this startup guide; SDD commands and workflow behavior remain available.
 
 `model` uses `provider/model-id`, and is applied to the main Pi session before the phase starts. `/sdd:config` interactively configures the default executor, model, effort, and sub-agent while preserving phase-specific overrides. When the default executor is `subagent`, the wizard provides two preconfigured provider choices: Anthropic (Claude 5) and OpenAI (GPT-5.6 family). The OpenAI preset routes requirements to `openai/gpt-5.6-luna`, specification and implementation to `openai/gpt-5.6-sol`, and planning and verification to `openai/gpt-5.6-terra`. If `.pi/sdd.json` does not exist, `/sdd:init <feature>` runs the same wizard before creating the feature. For `executor: "subagent"`, the extension instructs the model to call `subagent_run`; configure the actual subagent model in the matching project `.pi/subagents.json` profile:
 

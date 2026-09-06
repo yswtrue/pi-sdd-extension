@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { mkdir, access, readFile, writeFile } from "node:fs/promises";
+import { mkdir, access, readFile, writeFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 type Phase = "requirements" | "specification" | "planning" | "implementation" | "verification" | "done";
@@ -14,9 +14,23 @@ type SddState = {
 type Executor = "main" | "subagent";
 type PhaseConfig = { model?: string; executor?: Executor; agent?: string; effort?: string };
 type ModelPreset = "anthropic" | "openai";
-type SddConfig = { default?: PhaseConfig; phases?: Partial<Record<Phase, PhaseConfig>>; modelPreset?: ModelPreset };
+type SddConfig = {
+  default?: PhaseConfig;
+  phases?: Partial<Record<Phase, PhaseConfig>>;
+  modelPreset?: ModelPreset;
+  showSddGuide?: boolean;
+};
 
-const defaultConfig: SddConfig = { default: { executor: "main" }, phases: {} };
+const defaultConfig: SddConfig = { default: { executor: "main" }, phases: {}, showSddGuide: true };
+const sddGuideWidgetKey = "sdd-guide";
+const sddGuide = [
+  "SDD guide — loading this extension does not enable SDD automatically.",
+  "Workflow: requirements → specification → planning → implementation → verification.",
+  "Start a feature: `/sdd:init <feature>` · Enable in this session: `/sdd:on`",
+  "Check status: `/sdd:status` · Disable for this session: `/sdd:off`",
+  "Configure the default executor/model and other options: `/sdd:config`",
+  "Without `/sdd:on` or `/sdd:init`, the normal pi workflow is unchanged.",
+];
 
 type AgentModelPreset = { model: string; effort: string };
 type SubagentPreset = { label: string; agents: Record<string, AgentModelPreset> };
@@ -61,6 +75,43 @@ async function exists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function listIncompleteFeatures(cwd: string): Promise<string[]> {
+  const root = join(cwd, ".sdd", "specs");
+  try {
+    const entries = await readdir(root, { withFileTypes: true });
+    const incomplete: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const tasksPath = join(root, entry.name, "tasks.md");
+      try {
+        const tasks = await readFile(tasksPath, "utf8");
+        if (!tasks.includes("- [x]")) incomplete.push(entry.name);
+      } catch {
+        incomplete.push(entry.name);
+      }
+    }
+    return incomplete.sort();
+  } catch {
+    return [];
+  }
+}
+
+async function inferFeaturePhase(cwd: string, feature: string): Promise<Phase> {
+  const root = join(cwd, ".sdd", "specs", feature);
+  const read = async (name: string) => {
+    try { return await readFile(join(root, name), "utf8"); } catch { return ""; }
+  };
+  const spec = await read("spec.md");
+  const plan = await read("plan.md");
+  const tasks = await read("tasks.md");
+  const verification = await read("verification.md");
+  if (!spec.trim() || spec.includes("## Problem\\n\\n## Goals")) return "requirements";
+  if (!plan.trim() || plan.includes("## Design\\n\\n## Changes")) return "specification";
+  if (verification.includes("## Results\\n") && !verification.includes("## Results\\n\\n")) return "verification";
+  if (!tasks.includes("- [x] Implement the change")) return "planning";
+  return "implementation";
 }
 
 async function createArtifacts(cwd: string, feature: string): Promise<string> {
@@ -221,7 +272,7 @@ async function configureConfig(cwd: string, ctx: ExtensionContext, current: SddC
   }
   const next: SddConfig = { ...current, default: nextDefault, phases, modelPreset };
   await mkdir(join(cwd, ".pi"), { recursive: true });
-  await writeFile(join(cwd, ".pi", "sdd.json"), `${JSON.stringify(next, null, 2)}\\n`, "utf8");
+  await writeFile(join(cwd, ".pi", "sdd.json"), `${JSON.stringify(next, null, 2)}\n`, "utf8");
   ctx.ui.notify("SDD defaults saved to .pi/sdd.json", "info");
   return next;
 }
@@ -229,6 +280,8 @@ async function configureConfig(cwd: string, ctx: ExtensionContext, current: SddC
 export default function (pi: ExtensionAPI) {
   let state = initialState();
   let config: SddConfig = defaultConfig;
+  let guideShown = false;
+  let guideWidgetVisible = false;
 
   const saveState = () => pi.appendEntry("sdd-state", { ...state });
   const notify = (ctx: ExtensionContext, text: string) => ctx.ui.notify(text, "info");
@@ -248,7 +301,7 @@ export default function (pi: ExtensionAPI) {
     );
   };
 
-  pi.on("session_start", async (_event, ctx) => {
+  pi.on("session_start", async (event, ctx) => {
     config = await loadConfig(ctx.cwd);
     const entries = ctx.sessionManager.getEntries();
     const saved = [...entries].reverse().find(
@@ -257,6 +310,23 @@ export default function (pi: ExtensionAPI) {
     state = saved && "data" in saved && isSddState(saved.data) ? saved.data : initialState();
     if (state.enabled) notify(ctx, `SDD enabled: ${state.feature ?? "no feature"} (${state.phase})`);
     updateStatus(ctx);
+
+    if (!guideShown && event.reason !== "reload" && config.showSddGuide !== false && ctx.hasUI) {
+      guideShown = true;
+      try {
+        ctx.ui.setWidget(sddGuideWidgetKey, sddGuide);
+        guideWidgetVisible = true;
+      } catch {
+        // Older compatible hosts may not provide startup widgets.
+        ctx.ui.notify(sddGuide.join("\n"), "info");
+      }
+    }
+  });
+
+  pi.on("input", async (_event, ctx) => {
+    if (!guideWidgetVisible) return;
+    ctx.ui.setWidget(sddGuideWidgetKey, undefined);
+    guideWidgetVisible = false;
   });
 
   pi.registerCommand("sdd:on", {
@@ -317,6 +387,28 @@ export default function (pi: ExtensionAPI) {
       state = { enabled: true, feature, phase: "requirements" };
       saveState();
       notify(ctx, `Initialized .sdd/specs/${feature}; SDD enabled`);
+      updateStatus(ctx);
+    },
+  });
+
+  pi.registerCommand("sdd:resume", {
+    description: "Resume an incomplete SDD feature in the current directory",
+    handler: async (_args, ctx) => {
+      if (!ctx.hasUI) {
+        ctx.ui.notify("SDD resume requires interactive UI", "warning");
+        return;
+      }
+      const features = await listIncompleteFeatures(ctx.cwd);
+      if (!features.length) {
+        ctx.ui.notify("No incomplete SDD features found under .sdd/specs", "info");
+        return;
+      }
+      const selected = await ctx.ui.select("Resume SDD feature", features);
+      if (!selected) return;
+      state = { enabled: true, feature: selected, phase: await inferFeaturePhase(ctx.cwd, selected) };
+      await initializeDefaultAgents(ctx.cwd, config);
+      saveState();
+      notify(ctx, `Resumed .sdd/specs/${selected}; SDD enabled at ${state.phase} phase`);
       updateStatus(ctx);
     },
   });
