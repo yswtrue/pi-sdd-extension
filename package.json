@@ -1,11 +1,28 @@
 {
   "name": "pi-sdd-extension",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Spec-driven development workflow extension for pi",
-  "keywords": ["pi-package", "pi-extension", "sdd"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yswtrue/pi-sdd-extension.git"
+  },
+  "homepage": "https://github.com/yswtrue/pi-sdd-extension#readme",
+  "bugs": {
+    "url": "https://github.com/yswtrue/pi-sdd-extension/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "sdd"
+  ],
   "license": "MIT",
   "type": "module",
-  "files": ["src", "README.md", "package.json", "package-lock.json"],
+  "files": [
+    "src",
+    "README.md",
+    "package.json",
+    "package-lock.json"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
@@ -19,12 +36,16 @@
   "dependencies": {
     "pi-subagents-j0k3r": "1.5.13"
   },
-  "bundledDependencies": ["pi-subagents-j0k3r"],
+  "bundledDependencies": [
+    "pi-subagents-j0k3r"
+  ],
   "pi": {
     "extensions": [
       "./src/index.ts",
       "./node_modules/pi-subagents-j0k3r/index.ts"
     ],
-    "skills": ["./node_modules/pi-subagents-j0k3r/skills"]
+    "skills": [
+      "./node_modules/pi-subagents-j0k3r/skills"
+    ]
   }
 }
