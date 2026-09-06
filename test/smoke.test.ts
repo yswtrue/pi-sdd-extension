@@ -31,6 +31,7 @@ function context(cwd: string, confirm = false) {
     hasUI: true,
     ui: {
       notify() {},
+      setStatus() {},
       async confirm() { return confirm; },
       async select() { return "main"; },
       async input() { return ""; },

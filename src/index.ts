@@ -187,6 +187,19 @@ export default function (pi: ExtensionAPI) {
   const featureRoot = (ctx: ExtensionContext) =>
     state.feature ? join(ctx.cwd, ".sdd", "specs", state.feature) : undefined;
 
+  const updateStatus = (ctx: ExtensionContext) => {
+    if (!state.enabled) {
+      ctx.ui.setStatus("sdd", undefined);
+      return;
+    }
+    const routing = phaseConfig(config, state.phase);
+    const progress = `${Math.max(phases.indexOf(state.phase) + 1, 1)}/${phases.length}`;
+    ctx.ui.setStatus(
+      "sdd",
+      `SDD ${state.feature ?? "未初始化"} · ${state.phase} · ${progress} · ${routing.executor ?? "main"}`,
+    );
+  };
+
   pi.on("session_start", async (_event, ctx) => {
     config = await loadConfig(ctx.cwd);
     const entries = ctx.sessionManager.getEntries();
@@ -195,6 +208,7 @@ export default function (pi: ExtensionAPI) {
     );
     state = saved && "data" in saved && isSddState(saved.data) ? saved.data : initialState();
     if (state.enabled) notify(ctx, `SDD enabled: ${state.feature ?? "no feature"} (${state.phase})`);
+    updateStatus(ctx);
   });
 
   pi.registerCommand("sdd:on", {
@@ -203,6 +217,7 @@ export default function (pi: ExtensionAPI) {
       state.enabled = true;
       saveState();
       notify(ctx, `SDD enabled (${state.phase})`);
+      updateStatus(ctx);
     },
   });
 
@@ -212,6 +227,7 @@ export default function (pi: ExtensionAPI) {
       state.enabled = false;
       saveState();
       notify(ctx, "SDD disabled; normal workflow restored");
+      updateStatus(ctx);
     },
   });
 
@@ -220,6 +236,7 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       const next = await configureConfig(ctx.cwd, ctx, config);
       if (next) config = next;
+      updateStatus(ctx);
     },
   });
 
@@ -252,6 +269,7 @@ export default function (pi: ExtensionAPI) {
       state = { enabled: true, feature, phase: "requirements" };
       saveState();
       notify(ctx, `Initialized .sdd/specs/${feature}; SDD enabled`);
+      updateStatus(ctx);
     },
   });
 
@@ -309,6 +327,7 @@ export default function (pi: ExtensionAPI) {
       state.phase = phase;
       saveState();
       notify(ctx, `SDD phase: ${phase}`);
+      updateStatus(ctx);
     },
   });
 
@@ -322,6 +341,7 @@ export default function (pi: ExtensionAPI) {
       state.phase = "verification";
       saveState();
       notify(ctx, "Verification phase: run tests and update verification.md");
+      updateStatus(ctx);
     },
   });
 
