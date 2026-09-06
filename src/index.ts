@@ -35,11 +35,11 @@ const subagentModelPresets: Record<ModelPreset, SubagentPreset> = {
   openai: {
     label: "OpenAI (GPT-5.6 family)",
     agents: Object.fromEntries([
-      ["sdd-requirements", { model: "openai/gpt-5.6-luna", effort: "low" }],
-      ["sdd-specification", { model: "openai/gpt-5.6-sol", effort: "high" }],
-      ["sdd-planner", { model: "openai/gpt-5.6-terra", effort: "medium" }],
-      ["sdd-implementation", { model: "openai/gpt-5.6-sol", effort: "high" }],
-      ["sdd-verifier", { model: "openai/gpt-5.6-terra", effort: "high" }],
+      ["sdd-requirements", { model: "openai-codex/gpt-5.6-luna", effort: "low" }],
+      ["sdd-specification", { model: "openai-codex/gpt-5.6-sol", effort: "high" }],
+      ["sdd-planner", { model: "openai-codex/gpt-5.6-terra", effort: "medium" }],
+      ["sdd-implementation", { model: "openai-codex/gpt-5.6-sol", effort: "high" }],
+      ["sdd-verifier", { model: "openai-codex/gpt-5.6-terra", effort: "high" }],
     ]),
   },
 };
