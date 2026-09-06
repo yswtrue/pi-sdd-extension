@@ -197,7 +197,14 @@ async function initializeDefaultAgents(cwd: string, config: SddConfig): Promise<
   await mkdir(agentsDir, { recursive: true });
   for (const [name, definition] of Object.entries(defaultAgents)) {
     const path = join(agentsDir, `${name}.md`);
-    if (!(await exists(path))) await writeFile(path, agentDefinition(name, definition), "utf8");
+    let existing = "";
+    try { existing = await readFile(path, "utf8"); } catch { /* Create missing defaults below. */ }
+    const isLegacyGeneratedDefinition = existing.includes(`# ${name}`) &&
+      !existing.includes(".sdd/specs/<feature>") &&
+      ["sdd-requirements", "sdd-specification", "sdd-planner", "sdd-verifier"].includes(name);
+    if (!existing || isLegacyGeneratedDefinition) {
+      await writeFile(path, agentDefinition(name, definition), "utf8");
+    }
   }
 
   const configPath = join(cwd, ".pi", "subagents.json");
