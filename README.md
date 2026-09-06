@@ -34,7 +34,7 @@ Project-local `.pi/sdd.json` controls the executor and model for each phase:
     },
     "implementation": {
       "executor": "main",
-      "model": "anthropic/claude-opus-4-1"
+      "model": "openai/gpt-5.6"
     },
     "verification": {
       "executor": "subagent",
@@ -44,14 +44,32 @@ Project-local `.pi/sdd.json` controls the executor and model for each phase:
 }
 ```
 
-`model` uses `provider/model-id`, and is applied to the main Pi session before the phase starts. `/sdd:config` interactively configures the default executor, model, effort, and sub-agent while preserving phase-specific overrides. If `.pi/sdd.json` does not exist, `/sdd:init <feature>` runs the same wizard before creating the feature. For `executor: "subagent"`, the extension instructs the model to call `subagent_run`; configure the actual subagent model in the matching project `.pi/subagents.json` profile:
+`model` uses `provider/model-id`, and is applied to the main Pi session before the phase starts. `/sdd:config` interactively configures the default executor, model, effort, and sub-agent while preserving phase-specific overrides. When the default executor is `subagent`, the wizard provides two preconfigured provider choices: Anthropic (Claude 5) and OpenAI (GPT-5.6 family). The OpenAI preset routes requirements to `openai/gpt-5.6-luna`, specification and implementation to `openai/gpt-5.6-sol`, and planning and verification to `openai/gpt-5.6-terra`. If `.pi/sdd.json` does not exist, `/sdd:init <feature>` runs the same wizard before creating the feature. For `executor: "subagent"`, the extension instructs the model to call `subagent_run`; configure the actual subagent model in the matching project `.pi/subagents.json` profile:
 
 ```json
 {
   "model_profiles": {
-    "sdd-requirements": { "model": "anthropic/claude-sonnet-4-5", "effort": "low" },
-    "sdd-specification": { "model": "anthropic/claude-sonnet-4-5", "effort": "medium" },
-    "sdd-verifier": { "model": "openai/gpt-5", "effort": "high" }
+    "sdd-requirements": { "model": "anthropic/claude-5", "effort": "low" },
+    "sdd-specification": { "model": "anthropic/claude-5", "effort": "medium" },
+    "sdd-planner": { "model": "anthropic/claude-5", "effort": "medium" },
+    "sdd-implementation": { "model": "anthropic/claude-5", "effort": "high" },
+    "sdd-verifier": { "model": "anthropic/claude-5", "effort": "high" }
+  },
+  "model_presets": {
+    "anthropic": {
+      "sdd-requirements": "anthropic/claude-5",
+      "sdd-specification": "anthropic/claude-5",
+      "sdd-planner": "anthropic/claude-5",
+      "sdd-implementation": "anthropic/claude-5",
+      "sdd-verifier": "anthropic/claude-5"
+    },
+    "openai": {
+      "sdd-requirements": "openai/gpt-5.6-luna",
+      "sdd-specification": "openai/gpt-5.6-sol",
+      "sdd-planner": "openai/gpt-5.6-terra",
+      "sdd-implementation": "openai/gpt-5.6-sol",
+      "sdd-verifier": "openai/gpt-5.6-terra"
+    }
   },
   "session_resources": "lean",
   "default_mode": "task"

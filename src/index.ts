@@ -13,9 +13,36 @@ type SddState = {
 
 type Executor = "main" | "subagent";
 type PhaseConfig = { model?: string; executor?: Executor; agent?: string; effort?: string };
-type SddConfig = { default?: PhaseConfig; phases?: Partial<Record<Phase, PhaseConfig>> };
+type ModelPreset = "anthropic" | "openai";
+type SddConfig = { default?: PhaseConfig; phases?: Partial<Record<Phase, PhaseConfig>>; modelPreset?: ModelPreset };
 
 const defaultConfig: SddConfig = { default: { executor: "main" }, phases: {} };
+
+type AgentModelPreset = { model: string; effort: string };
+type SubagentPreset = { label: string; agents: Record<string, AgentModelPreset> };
+
+const subagentModelPresets: Record<ModelPreset, SubagentPreset> = {
+  anthropic: {
+    label: "Anthropic (Claude 5)",
+    agents: Object.fromEntries([
+      ["sdd-requirements", { model: "anthropic/claude-5", effort: "low" }],
+      ["sdd-specification", { model: "anthropic/claude-5", effort: "medium" }],
+      ["sdd-planner", { model: "anthropic/claude-5", effort: "medium" }],
+      ["sdd-implementation", { model: "anthropic/claude-5", effort: "high" }],
+      ["sdd-verifier", { model: "anthropic/claude-5", effort: "high" }],
+    ]),
+  },
+  openai: {
+    label: "OpenAI (GPT-5.6 family)",
+    agents: Object.fromEntries([
+      ["sdd-requirements", { model: "openai/gpt-5.6-luna", effort: "low" }],
+      ["sdd-specification", { model: "openai/gpt-5.6-sol", effort: "high" }],
+      ["sdd-planner", { model: "openai/gpt-5.6-terra", effort: "medium" }],
+      ["sdd-implementation", { model: "openai/gpt-5.6-sol", effort: "high" }],
+      ["sdd-verifier", { model: "openai/gpt-5.6-terra", effort: "high" }],
+    ]),
+  },
+};
 
 const phases: Phase[] = ["requirements", "specification", "planning", "implementation", "verification", "done"];
 const initialState = (): SddState => ({ enabled: false, phase: "requirements" });
@@ -157,8 +184,21 @@ async function configureConfig(cwd: string, ctx: ExtensionContext, current: SddC
   const existing = current.default ?? {};
   const executor = await ctx.ui.select("Default SDD executor", ["main", "subagent"]);
   if (!executor) return undefined;
-  const model = await ctx.ui.input("Default model (provider/model-id, optional)", existing.model ?? "");
-  if (model === undefined) return undefined;
+  let model: string | undefined;
+  let modelPreset = current.modelPreset;
+  if (executor === "subagent") {
+    const selectedPreset = await ctx.ui.select(
+      "Default sub-agent provider",
+      Object.entries(subagentModelPresets).map(([key, preset]) => `${key}: ${preset.label}`),
+    );
+    if (!selectedPreset) return undefined;
+    modelPreset = selectedPreset.startsWith("openai:") ? "openai" : "anthropic";
+    model = subagentModelPresets[modelPreset].agents["sdd-requirements"].model;
+  } else {
+    const inputModel = await ctx.ui.input("Default model (provider/model-id, optional)", existing.model ?? "");
+    if (inputModel === undefined) return undefined;
+    model = inputModel.trim() || undefined;
+  }
   const effort = await ctx.ui.select("Default thinking effort", ["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
   if (!effort) return undefined;
 
@@ -169,9 +209,17 @@ async function configureConfig(cwd: string, ctx: ExtensionContext, current: SddC
   }
 
   const nextDefault: PhaseConfig = { executor: executor as Executor, effort };
-  if (model.trim()) nextDefault.model = model.trim();
+  if (model) nextDefault.model = model;
   if (executor === "subagent" && agent?.trim()) nextDefault.agent = agent.trim();
-  const next: SddConfig = { ...current, default: nextDefault, phases: current.phases ?? {} };
+  const phases = { ...(current.phases ?? {}) };
+  if (executor === "subagent" && modelPreset) {
+    for (const phase of ["requirements", "specification", "planning", "implementation", "verification"] as Phase[]) {
+      const agent = phases[phase]?.agent ?? `sdd-${phase === "specification" ? "specification" : phase === "planning" ? "planner" : phase}`;
+      const preset = subagentModelPresets[modelPreset].agents[agent];
+      if (preset) phases[phase] = { ...phases[phase], model: preset.model, effort: preset.effort };
+    }
+  }
+  const next: SddConfig = { ...current, default: nextDefault, phases, modelPreset };
   await mkdir(join(cwd, ".pi"), { recursive: true });
   await writeFile(join(cwd, ".pi", "sdd.json"), `${JSON.stringify(next, null, 2)}\\n`, "utf8");
   ctx.ui.notify("SDD defaults saved to .pi/sdd.json", "info");
