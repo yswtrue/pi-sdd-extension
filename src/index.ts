@@ -113,17 +113,17 @@ const defaultAgents: Record<string, { description: string; tools: string[]; inst
   "sdd-requirements": {
     description: "Clarifies requirements and acceptance criteria for an SDD feature.",
     tools: ["read", "write"],
-    instructions: "Clarify the problem, goals, non-goals, constraints, and acceptance criteria. Update the feature spec.md only. Do not modify source code.",
+    instructions: "Clarify the problem, goals, non-goals, constraints, and acceptance criteria. Update only .sdd/specs/<feature>/spec.md, replacing <feature> with the current feature name. Do not create a root-level spec.md and do not modify source code.",
   },
   "sdd-specification": {
     description: "Creates a precise technical specification for an SDD feature.",
     tools: ["read", "write", "edit"],
-    instructions: "Turn the approved requirements into a precise specification. Update spec.md and keep the work limited to SDD artifacts.",
+    instructions: "Turn the approved requirements into a precise specification. Update only .sdd/specs/<feature>/spec.md, replacing <feature> with the current feature name. Keep the work limited to SDD artifacts.",
   },
   "sdd-planner": {
     description: "Produces an implementation plan and task breakdown for an SDD feature.",
     tools: ["read", "write", "edit"],
-    instructions: "Create a concrete implementation plan, affected files, risks, and test plan. Update plan.md and tasks.md only.",
+    instructions: "Create a concrete implementation plan, affected files, risks, and test plan. Update only .sdd/specs/<feature>/plan.md and .sdd/specs/<feature>/tasks.md, replacing <feature> with the current feature name.",
   },
   "sdd-implementation": {
     description: "Implements an approved SDD plan without expanding scope.",
@@ -406,7 +406,7 @@ export default function (pi: ExtensionAPI) {
       pi.setThinkingLevel(routing.effort as "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max");
     }
     const delegation = routing.executor === "subagent"
-      ? "\nExecution: delegate this phase to the subagent_run tool using agent " + (routing.agent ?? "sdd-phase") + ". Use mode=task and return only a concise result plus artifact paths. Do not perform the phase directly in the main session."
+      ? "\nExecution: delegate this phase to the subagent_run tool using agent " + (routing.agent ?? "sdd-phase") + ". The current feature artifact directory is .sdd/specs/" + (state.feature ?? "<feature>") + ". Use mode=task, write artifacts only in that directory, and return only a concise result plus artifact paths. Do not perform the phase directly in the main session."
       : "";
     return {
       systemPrompt: `${event.systemPrompt}\n\n## SDD mode\nYou must follow the SDD workflow.\nCurrent feature: ${state.feature ?? "not initialized"}\nCurrent phase: ${state.phase}\nConfigured executor: ${routing.executor ?? "main"}${routing.model ? `\nConfigured model: ${routing.model}` : ""}${routing.agent ? `\nConfigured agent: ${routing.agent}` : ""}${delegation}\n\nRules:\n- Work only on the current phase.\n- Keep the specification and plan artifacts up to date.\n- Do not implement source changes before an approved plan.\n- Do not claim completion before verification.\n- Use /sdd:next or /sdd:approve when a phase transition is ready.`,
