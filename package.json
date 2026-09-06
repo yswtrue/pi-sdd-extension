@@ -1,0 +1,30 @@
+{
+  "name": "pi-sdd-extension",
+  "version": "0.1.0",
+  "description": "Spec-driven development workflow extension for pi",
+  "keywords": ["pi-package", "pi-extension", "sdd"],
+  "license": "MIT",
+  "type": "module",
+  "files": ["src", "README.md", "package.json", "package-lock.json"],
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "latest",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "pi-subagents-j0k3r": "1.5.13"
+  },
+  "bundledDependencies": ["pi-subagents-j0k3r"],
+  "pi": {
+    "extensions": [
+      "./src/index.ts",
+      "./node_modules/pi-subagents-j0k3r/index.ts"
+    ],
+    "skills": ["./node_modules/pi-subagents-j0k3r/skills"]
+  }
+}
