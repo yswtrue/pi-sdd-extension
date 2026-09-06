@@ -59,6 +59,11 @@ Project-local `.pi/sdd.json` controls the executor and model for each phase:
 ```
 
 This keeps each phase's detailed work in a subagent session and returns only a concise result to the main context. `/sdd:init` creates default agents for requirements, specification, planning, implementation, and verification under `.pi/subagents/`, plus a project `.pi/subagents.json`. Existing definitions are preserved.
+The SDD package does not bundle or load `pi-subagents-j0k3r` automatically, because Pi rejects duplicate registration when it is already installed globally. Install it once separately when using subagent phases:
+
+```bash
+pi install npm:pi-subagents-j0k3r
+```
 Running `/sdd:init <feature>` also creates missing defaults under `.pi/subagents/` and `.pi/subagents.json`. Existing files are preserved.
 
 Without `/sdd:on` or `/sdd:init`, the extension leaves the normal pi workflow unchanged.
