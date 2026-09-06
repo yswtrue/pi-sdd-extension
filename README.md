@@ -88,4 +88,4 @@ npm run ci
 git push origin main --follow-tags
 ```
 
-Configure the repository secret `NPM_TOKEN` with an npm publish token. Configure GitHub Actions as a trusted publisher on npm when using provenance.
+Configure npm Trusted Publishing for this GitHub repository and workflow (`.github/workflows/release.yml`). No `NPM_TOKEN` secret is required; the workflow uses GitHub OIDC with `id-token: write`.

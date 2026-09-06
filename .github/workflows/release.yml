@@ -45,9 +45,7 @@ jobs:
       - name: Test package
         run: npm run ci
 
-      - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish to npm with Trusted Publishing
         run: npm publish --access public --provenance
 
       - name: Create GitHub Release
