@@ -71,3 +71,21 @@ npm install
 npm run typecheck
 pi -e ./src/index.ts
 ```
+
+
+## CI/CD
+
+GitHub Actions are configured in `.github/workflows/`:
+
+- `ci.yml`: runs on pull requests and pushes to `main`; executes `npm run ci`.
+- `publish.yml`: runs when a `v*.*.*` tag is pushed; verifies the tag matches `package.json`, runs CI, then publishes to npm.
+
+Configure the repository secret `NPM_TOKEN` with an npm publish token. To release:
+
+```bash
+npm version patch
+npm run ci
+git push origin main --follow-tags
+```
+
+Configure GitHub Actions as a trusted publisher on npm when using provenance.

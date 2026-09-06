@@ -24,14 +24,17 @@
     "package-lock.json"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/**/*.test.ts",
+    "ci": "npm run typecheck && npm test && npm pack --dry-run"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "latest",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "tsx": "^4.19.0"
   },
   "dependencies": {
     "pi-subagents-j0k3r": "1.5.13"
