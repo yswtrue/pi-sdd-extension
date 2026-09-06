@@ -218,7 +218,12 @@ async function initializeDefaultAgents(cwd: string, config: SddConfig): Promise<
   for (const phase of ["requirements", "specification", "planning", "implementation", "verification"] as Phase[]) {
     const routing = phaseConfig(config, phase);
     const agent = routing.agent ?? `sdd-${phase === "specification" ? "specification" : phase === "planning" ? "planner" : phase}`;
-    if (routing.model && !profiles[agent]) profiles[agent] = { model: routing.model, ...(routing.effort ? { effort: routing.effort } : {}) };
+    const preset = config.modelPreset ? subagentModelPresets[config.modelPreset].agents[agent] : undefined;
+    if (preset) {
+      profiles[agent] = { model: preset.model, effort: preset.effort };
+    } else if (routing.model && !profiles[agent]) {
+      profiles[agent] = { model: routing.model, ...(routing.effort ? { effort: routing.effort } : {}) };
+    }
   }
   await writeFile(configPath, `${JSON.stringify({ ...subagentsConfig, model_profiles: profiles, session_resources: subagentsConfig.session_resources ?? "lean", default_mode: subagentsConfig.default_mode ?? "task" }, null, 2)}\n`, "utf8");
 }
@@ -267,14 +272,17 @@ async function configureConfig(cwd: string, ctx: ExtensionContext, current: SddC
   }
 
   const nextDefault: PhaseConfig = { executor: executor as Executor, effort };
-  if (model) nextDefault.model = model;
+  if (executor === "main" && model) nextDefault.model = model;
   if (executor === "subagent" && agent?.trim()) nextDefault.agent = agent.trim();
   const phases = { ...(current.phases ?? {}) };
   if (executor === "subagent" && modelPreset) {
     for (const phase of ["requirements", "specification", "planning", "implementation", "verification"] as Phase[]) {
       const agent = phases[phase]?.agent ?? `sdd-${phase === "specification" ? "specification" : phase === "planning" ? "planner" : phase}`;
       const preset = subagentModelPresets[modelPreset].agents[agent];
-      if (preset) phases[phase] = { ...phases[phase], model: preset.model, effort: preset.effort };
+      if (preset) {
+        const { model: _phaseModel, ...phaseWithoutModel } = phases[phase] ?? {};
+        phases[phase] = { ...phaseWithoutModel, effort: preset.effort };
+      }
     }
   }
   const next: SddConfig = { ...current, default: nextDefault, phases, modelPreset };

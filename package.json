@@ -1,6 +1,6 @@
 {
   "name": "pi-sdd-extension",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Spec-driven development workflow extension for pi",
   "repository": {
     "type": "git",

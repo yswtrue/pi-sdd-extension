@@ -23,6 +23,7 @@ pnpm-debug.log*
 .pi/subagents.json
 .pi/subagents/
 .pi/npm/
+.sdd/
 
 # Devenv
 .devenv*
