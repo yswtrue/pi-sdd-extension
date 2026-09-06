@@ -78,14 +78,19 @@ pi -e ./src/index.ts
 GitHub Actions are configured in `.github/workflows/`:
 
 - `ci.yml`: runs on pull requests and pushes to `main`; executes `npm run ci`.
-- `publish.yml`: runs when a `v*.*.*` tag is pushed; verifies the tag matches `package.json`, runs CI, then publishes to npm.
+- `release-please.yml`: analyzes Conventional Commits, creates/updates a release PR, and generates `CHANGELOG.md` on release.
 
-Configure the repository secret `NPM_TOKEN` with an npm publish token. To release:
+- `publish.yml`: runs when the GitHub Release is published, verifies the version, runs CI, and publishes to npm.
 
 ```bash
+# Use Conventional Commits, then push to main.
+git push origin main
+
+# Release Please opens a release PR automatically.
+# Merge that PR to generate the tag, GitHub Release, and CHANGELOG.md.
 npm version patch
 npm run ci
 git push origin main --follow-tags
 ```
 
-Configure GitHub Actions as a trusted publisher on npm when using provenance.
+Configure the repository secret `NPM_TOKEN` with an npm publish token. Configure GitHub Actions as a trusted publisher on npm when using provenance.
