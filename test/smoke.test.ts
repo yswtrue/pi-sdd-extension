@@ -19,6 +19,7 @@ function createPi() {
     },
     appendEntry() {},
     setThinkingLevel() {},
+    sendUserMessage() {},
     async setModel() { return true; },
   };
   extension(pi as any);
@@ -164,6 +165,45 @@ test("resumes a selected incomplete feature", async () => {
     await commands.get("sdd:status")!.handler("", ctx);
     assert.match(statusCalls.at(-1)!, /feature: unfinished/);
     assert.match(statusCalls.at(-1)!, /phase: specification/);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("requires explicit approval before advancing and queues the next phase", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "pi-sdd-"));
+  try {
+    const { commands } = createPi();
+    const calls = uiCalls();
+    const ctx = context(cwd, false, calls);
+    await commands.get("sdd:init")!.handler("demo", ctx);
+    await writeFile(join(cwd, ".sdd/specs/demo/spec.md"), "# demo\\n\\n## Problem\\nreal problem\\n\\n## Goals\\nreal goal\\n", "utf8");
+
+    await commands.get("sdd:next")!.handler("", ctx);
+    assert.match(calls.notifications.at(-1)!, /approve the requirements/);
+
+    await commands.get("sdd:approve")!.handler("", ctx);
+    await commands.get("sdd:next")!.handler("", ctx);
+    await commands.get("sdd:status")!.handler("", ctx);
+    assert.match(calls.notifications.at(-1)!, /phase: specification/);
+    assert.match(calls.notifications.at(-1)!, /approval: required/);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("blocks implementation delegation before the implementation phase", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "pi-sdd-"));
+  try {
+    const { commands, events } = createPi();
+    const ctx = context(cwd);
+    await commands.get("sdd:init")!.handler("demo", ctx);
+    const result = await events.get("tool_call")!({
+      toolName: "subagent_run",
+      input: { agent: "sdd-implementation", task: "Implement the approved plan" },
+    }, ctx);
+    assert.equal(result?.block, true);
+    assert.match(result?.reason ?? "", /approve the plan/);
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }

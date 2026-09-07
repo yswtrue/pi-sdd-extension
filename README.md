@@ -12,8 +12,8 @@ A session-scoped SDD workflow extension for pi.
 /sdd:resume          Resume an incomplete feature from the current directory
 /sdd:config          Interactively configure SDD defaults
 /sdd:agents          Initialize missing default sub-agent definitions
-/sdd:approve         Approve the current specification or plan
-/sdd:next            Advance after validation
+/sdd:approve         Approve the current requirements, specification, or plan
+/sdd:next            Advance after validation and start the next phase
 /sdd:verify          Enter verification
 ```
 
@@ -45,6 +45,8 @@ Project-local `.pi/sdd.json` controls the executor and model for each phase:
   }
 }
 ```
+
+Advancing is approval-gated: complete the current artifact, run `/sdd:approve`, then run `/sdd:next`. Editing an approved artifact clears its approval. `/sdd:next` queues the next phase automatically; no extra `continue` message is required.
 
 The SDD usage guide is shown on the first screen by default. Set `"showSddGuide": false` in `.pi/sdd.json` to hide only this startup guide; SDD commands and workflow behavior remain available.
 
