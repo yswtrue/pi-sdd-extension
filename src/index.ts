@@ -126,6 +126,19 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
+async function readProgress(cwd: string, feature: string): Promise<Phase | undefined> {
+  try {
+    const progress = await readFile(
+      join(cwd, ".sdd", "specs", feature, "progress.md"),
+      "utf8",
+    );
+    const match = progress.match(/^phase:\s*(requirements|specification|planning|implementation|verification|done)\s*$/m);
+    return match?.[1] as Phase | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function listIncompleteFeatures(cwd: string): Promise<string[]> {
   const root = join(cwd, ".sdd", "specs");
   try {
@@ -133,13 +146,8 @@ async function listIncompleteFeatures(cwd: string): Promise<string[]> {
     const incomplete: string[] = [];
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
-      const tasksPath = join(root, entry.name, "tasks.md");
-      try {
-        const tasks = await readFile(tasksPath, "utf8");
-        if (!tasks.includes("- [x]")) incomplete.push(entry.name);
-      } catch {
-        incomplete.push(entry.name);
-      }
+      const progress = await readProgress(cwd, entry.name);
+      if (progress !== "done") incomplete.push(entry.name);
     }
     return incomplete.sort();
   } catch {
@@ -156,6 +164,8 @@ async function inferFeaturePhase(cwd: string, feature: string): Promise<Phase> {
       return "";
     }
   };
+  const progress = await readProgress(cwd, feature);
+  if (progress) return progress;
   const spec = await read("spec.md");
   const plan = await read("plan.md");
   const tasks = await read("tasks.md");
@@ -181,6 +191,7 @@ async function createArtifacts(cwd: string, feature: string): Promise<string> {
     "spec.md": `# ${feature}\n\n## Problem\n\n## Goals\n\n## Non-goals\n\n## Acceptance criteria\n\n- [ ] \n`,
     "plan.md": `# Implementation plan: ${feature}\n\n## Design\n\n## Changes\n\n## Risks\n\n## Test plan\n`,
     "tasks.md": `# Tasks: ${feature}\n\n- [ ] Review and approve the specification\n- [ ] Review and approve the implementation plan\n- [ ] Implement the change\n- [ ] Run verification\n`,
+    "progress.md": `# Progress: ${feature}\n\nphase: requirements\nstatus: incomplete\n`,
     "verification.md": `# Verification: ${feature}\n\n## Commands\n\n## Results\n\n## Acceptance criteria\n`,
   };
 
@@ -259,7 +270,7 @@ const defaultAgents: Record<
     description: "Implements an approved SDD plan without expanding scope.",
     tools: ["read", "bash", "write", "edit"],
     instructions:
-      "Implement only the approved plan. Keep changes scoped to the plan, run focused tests, and report changed files and remaining risks.",
+      "Implement only the approved plan. Keep changes scoped to the plan, run focused tests, and update .sdd/specs/<feature>/tasks.md by checking every implementation task that is actually complete before reporting done. Leave verification tasks unchecked until verification passes, and report changed files and remaining risks.",
   },
   "sdd-verifier": {
     description:
@@ -298,6 +309,7 @@ async function initializeDefaultAgents(
         "sdd-requirements",
         "sdd-specification",
         "sdd-planner",
+        "sdd-implementation",
         "sdd-verifier",
       ].includes(name);
     if (!existing || isLegacyGeneratedDefinition) {
@@ -463,6 +475,17 @@ export default function (pi: ExtensionAPI) {
   let guideWidgetVisible = false;
 
   const saveState = () => pi.appendEntry("sdd-state", { ...state });
+  const saveProgress = async (ctx: ExtensionContext) => {
+    if (!state.feature) return;
+    const root = featureRoot(ctx);
+    if (!root) return;
+    await mkdir(root, { recursive: true });
+    await writeFile(
+      join(root, "progress.md"),
+      `# Progress: ${state.feature}\n\nphase: ${state.phase}\nstatus: ${state.phase === "done" ? "complete" : "incomplete"}\napproval: ${state.approvedPhase === state.phase ? "approved" : "required"}\n`,
+      "utf8",
+    );
+  };
   const notify = (ctx: ExtensionContext, text: string) =>
     ctx.ui.notify(text, "info");
   const featureRoot = (ctx: ExtensionContext) =>
@@ -532,6 +555,7 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       state.enabled = true;
       saveState();
+      await saveProgress(ctx);
       notify(ctx, `SDD enabled (${state.phase})`);
       updateStatus(ctx);
     },
@@ -542,6 +566,7 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       state.enabled = false;
       saveState();
+      await saveProgress(ctx);
       notify(ctx, "SDD disabled; normal workflow restored");
       updateStatus(ctx);
     },
@@ -584,6 +609,7 @@ export default function (pi: ExtensionAPI) {
       await createArtifacts(ctx.cwd, feature);
       state = { enabled: true, feature, phase: "requirements" };
       saveState();
+      await saveProgress(ctx);
       notify(ctx, `Initialized .sdd/specs/${feature}; SDD enabled`);
       updateStatus(ctx);
     },
@@ -613,6 +639,7 @@ export default function (pi: ExtensionAPI) {
       };
       await initializeDefaultAgents(ctx.cwd, config);
       saveState();
+      await saveProgress(ctx);
       notify(
         ctx,
         `Resumed .sdd/specs/${selected}; SDD enabled at ${state.phase} phase`,
@@ -648,6 +675,7 @@ export default function (pi: ExtensionAPI) {
       }
       state.approvedPhase = state.phase;
       saveState();
+      await saveProgress(ctx);
       notify(ctx, `Approved ${state.phase}`);
       updateStatus(ctx);
     },
@@ -705,6 +733,7 @@ export default function (pi: ExtensionAPI) {
       state.phase = phase;
       state.approvedPhase = undefined;
       saveState();
+      await saveProgress(ctx);
       notify(ctx, `SDD phase: ${phase}`);
       updateStatus(ctx);
       // A slash command does not itself start another agent turn. Queue the
@@ -733,6 +762,7 @@ export default function (pi: ExtensionAPI) {
       }
       state.phase = "verification";
       saveState();
+      await saveProgress(ctx);
       notify(ctx, "Verification phase: run tests and update verification.md");
       updateStatus(ctx);
     },
@@ -776,10 +806,13 @@ export default function (pi: ExtensionAPI) {
           (routing.agent ?? "sdd-phase") +
           ". The current feature artifact directory is .sdd/specs/" +
           (state.feature ?? "<feature>") +
-          ". Use mode=task, write artifacts only in that directory, and return only a concise result plus artifact paths. Do not perform the phase directly in the main session."
+          ". Use mode=task, write artifacts only in that directory, and return only a concise result plus artifact paths. Do not perform the phase directly in the main session." +
+          (state.phase === "implementation"
+            ? " Before reporting completion, update tasks.md and check every implementation task that is actually complete; leave verification tasks unchecked."
+            : "")
         : "";
     return {
-      systemPrompt: `${event.systemPrompt}\n\n## SDD mode\nYou must follow the SDD workflow.\nCurrent feature: ${state.feature ?? "not initialized"}\nCurrent phase: ${state.phase}\nConfigured executor: ${routing.executor ?? "main"}${routing.model ? `\nConfigured model: ${routing.model}` : ""}${routing.agent ? `\nConfigured agent: ${routing.agent}` : ""}${delegation}\n\nRules:\n- Work only on the current phase.\n- Keep the specification and plan artifacts up to date.\n- Do not implement source changes before an approved plan.\n- Never delegate or start an implementation subagent unless the current phase is implementation.\n- Do not advance phases automatically; only /sdd:approve followed by /sdd:next may advance a phase.\n- Do not claim completion before verification.\n- Use /sdd:next or /sdd:approve when a phase transition is ready.`,
+      systemPrompt: `${event.systemPrompt}\n\n## SDD mode\nYou must follow the SDD workflow.\nCurrent feature: ${state.feature ?? "not initialized"}\nCurrent phase: ${state.phase}\nConfigured executor: ${routing.executor ?? "main"}${routing.model ? `\nConfigured model: ${routing.model}` : ""}${routing.agent ? `\nConfigured agent: ${routing.agent}` : ""}${delegation}\n\nRules:\n- Work only on the current phase.\n- Keep the specification, plan, and task checklist artifacts up to date.\n- During implementation, mark completed implementation tasks as \`- [x]\` in \`.sdd/specs/<feature>/tasks.md\`; do not leave completed work unchecked.\n- Do not implement source changes before an approved plan.\n- Never delegate or start an implementation subagent unless the current phase is implementation.\n- Do not advance phases automatically; only /sdd:approve followed by /sdd:next may advance a phase.\n- Do not claim completion before verification.\n- Use /sdd:next or /sdd:approve when a phase transition is ready.`,
     };
   });
 
@@ -847,6 +880,7 @@ export default function (pi: ExtensionAPI) {
     if (state.approvedPhase === state.phase) {
       state.approvedPhase = undefined;
       saveState();
+      await saveProgress(ctx);
       updateStatus(ctx);
     }
   });
