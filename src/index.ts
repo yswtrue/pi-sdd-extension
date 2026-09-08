@@ -13,11 +13,20 @@ type Phase =
   | "verification"
   | "done";
 
+type ChangeImpact = "requirements" | "specification" | "planning";
+
+type ChangeRequest = {
+  description: string;
+  impact: ChangeImpact;
+  status: "pending" | "resolved";
+};
+
 type SddState = {
   enabled: boolean;
   feature?: string;
   phase: Phase;
   approvedPhase?: "requirements" | "specification" | "planning";
+  changeRequest?: ChangeRequest;
 };
 
 type Executor = "main" | "subagent";
@@ -113,7 +122,9 @@ function isSddState(value: unknown): value is SddState {
     (candidate.approvedPhase === undefined ||
       ["requirements", "specification", "planning"].includes(
         candidate.approvedPhase,
-      ))
+      )) &&
+    (candidate.changeRequest === undefined ||
+      typeof candidate.changeRequest === "object")
   );
 }
 
@@ -126,13 +137,18 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-async function readProgress(cwd: string, feature: string): Promise<Phase | undefined> {
+async function readProgress(
+  cwd: string,
+  feature: string,
+): Promise<Phase | undefined> {
   try {
     const progress = await readFile(
       join(cwd, ".sdd", "specs", feature, "progress.md"),
       "utf8",
     );
-    const match = progress.match(/^phase:\s*(requirements|specification|planning|implementation|verification|done)\s*$/m);
+    const match = progress.match(
+      /^phase:\s*(requirements|specification|planning|implementation|verification|done)\s*$/m,
+    );
     return match?.[1] as Phase | undefined;
   } catch {
     return undefined;
@@ -193,6 +209,7 @@ async function createArtifacts(cwd: string, feature: string): Promise<string> {
     "tasks.md": `# Tasks: ${feature}\n\n- [ ] Review and approve the specification\n- [ ] Review and approve the implementation plan\n- [ ] Implement the change\n- [ ] Run verification\n`,
     "progress.md": `# Progress: ${feature}\n\nphase: requirements\nstatus: incomplete\n`,
     "verification.md": `# Verification: ${feature}\n\n## Commands\n\n## Results\n\n## Acceptance criteria\n`,
+    "changes.md": `# Changes: ${feature}\n\n## Change requests\n`,
   };
 
   for (const [name, content] of Object.entries(templates)) {
@@ -482,7 +499,7 @@ export default function (pi: ExtensionAPI) {
     await mkdir(root, { recursive: true });
     await writeFile(
       join(root, "progress.md"),
-      `# Progress: ${state.feature}\n\nphase: ${state.phase}\nstatus: ${state.phase === "done" ? "complete" : "incomplete"}\napproval: ${state.approvedPhase === state.phase ? "approved" : "required"}\n`,
+      `# Progress: ${state.feature}\n\nphase: ${state.phase}\nstatus: ${state.phase === "done" ? "complete" : "incomplete"}\napproval: ${state.approvedPhase === state.phase ? "approved" : "required"}\nchange: ${state.changeRequest?.status ?? "none"}\n${state.changeRequest ? `change-impact: ${state.changeRequest.impact}\nchange-description: ${state.changeRequest.description}\n` : ""}`,
       "utf8",
     );
   };
@@ -648,6 +665,78 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  const handleChange = async (
+    args: string,
+    ctx: ExtensionContext,
+    forcedImpact?: ChangeImpact,
+  ) => {
+    if (!state.enabled || !state.feature) {
+      ctx.ui.notify("No active SDD feature", "warning");
+      return;
+    }
+    const input = args.trim();
+    const match = input.match(
+      /^(requirements|specification|planning)\s+(.+)$/i,
+    );
+    const impact =
+      forcedImpact ??
+      (match?.[1]?.toLowerCase() as ChangeImpact | undefined) ??
+      "requirements";
+    const description = (forcedImpact ? input : (match?.[2] ?? input)).trim();
+    if (!description) {
+      ctx.ui.notify(
+        "Usage: /sdd:change[:requirements|:specification|:planning] <description>",
+        "warning",
+      );
+      return;
+    }
+
+    const root = featureRoot(ctx);
+    if (!root) {
+      ctx.ui.notify("No active SDD feature", "warning");
+      return;
+    }
+    const changesPath = join(root, "changes.md");
+    let changes = "# Changes: " + state.feature + "\n\n## Change requests\n";
+    try {
+      changes = await readFile(changesPath, "utf8");
+    } catch {
+      /* The file is created for older features below. */
+    }
+    const timestamp = new Date().toISOString();
+    await writeFile(
+      changesPath,
+      `${changes.trimEnd()}\n\n### ${timestamp}\n- Impact: ${impact}\n- Description: ${description}\n- Status: pending\n`,
+      "utf8",
+    );
+
+    state.phase = impact;
+    state.approvedPhase = undefined;
+    state.changeRequest = { description, impact, status: "pending" };
+    saveState();
+    await saveProgress(ctx);
+    notify(
+      ctx,
+      `Change recorded; SDD rewound to ${impact}. Update the artifacts, then approve and continue with /sdd:next.`,
+    );
+    updateStatus(ctx);
+  };
+
+  pi.registerCommand("sdd:change", {
+    description: "Record a requirement/spec change and rewind the SDD workflow",
+    handler: (args, ctx) => handleChange(args, ctx),
+  });
+  for (const impact of [
+    "requirements",
+    "specification",
+    "planning",
+  ] as ChangeImpact[]) {
+    pi.registerCommand(`sdd:change:${impact}`, {
+      description: `Record a ${impact} change and rewind the SDD workflow`,
+      handler: (args, ctx) => handleChange(args, ctx, impact),
+    });
+  }
+
   pi.registerCommand("sdd:status", {
     description: "Show the current SDD state",
     handler: async (_args, ctx) => {
@@ -674,6 +763,8 @@ export default function (pi: ExtensionAPI) {
         return;
       }
       state.approvedPhase = state.phase;
+      if (state.changeRequest?.impact === state.phase)
+        state.changeRequest = { ...state.changeRequest, status: "resolved" };
       saveState();
       await saveProgress(ctx);
       notify(ctx, `Approved ${state.phase}`);

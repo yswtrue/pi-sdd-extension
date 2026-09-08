@@ -53,7 +53,7 @@ function uiCalls(): UiCalls {
 
 test("registers the SDD command surface", () => {
   const { commands } = createPi();
-  for (const command of ["sdd:on", "sdd:off", "sdd:config", "sdd:init", "sdd:agents", "sdd:resume", "sdd:status", "sdd:approve", "sdd:next", "sdd:verify"]) {
+  for (const command of ["sdd:on", "sdd:off", "sdd:config", "sdd:init", "sdd:agents", "sdd:resume", "sdd:status", "sdd:change", "sdd:change:requirements", "sdd:change:specification", "sdd:change:planning", "sdd:approve", "sdd:next", "sdd:verify"]) {
     assert.ok(commands.has(command), `missing /${command}`);
   }
 });
@@ -144,6 +144,29 @@ test("initializes artifacts and default agents", async () => {
     assert.match(await readFile(join(cwd, ".sdd/specs/demo/spec.md"), "utf8"), /# demo/);
     assert.match(await readFile(join(cwd, ".pi/subagents/sdd-planner.md"), "utf8"), /name: sdd-planner/);
     assert.match(await readFile(join(cwd, ".pi/subagents.json"), "utf8"), /session_resources/);
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+
+test("records a change and rewinds to the affected phase", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "pi-sdd-"));
+  try {
+    const { commands } = createPi();
+    await commands.get("sdd:init")!.handler("demo", context(cwd));
+    await commands.get("sdd:change:specification")!.handler(
+      "specification replace the transport layer",
+      context(cwd),
+    );
+    assert.match(
+      await readFile(join(cwd, ".sdd/specs/demo/changes.md"), "utf8"),
+      /Impact: specification/,
+    );
+    assert.match(
+      await readFile(join(cwd, ".sdd/specs/demo/progress.md"), "utf8"),
+      /phase: specification/,
+    );
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }
